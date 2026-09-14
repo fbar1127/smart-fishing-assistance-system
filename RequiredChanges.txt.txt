@@ -1,0 +1,7 @@
+- View Identification History -> Turn it into View User Log / View Activity Log
+- Add View Marketing Data or Data Analytics in Administrator
+- Gantt chart must include data collection before AI modelling
+- Development of Predictive Analytics must be transparent
+- Add more in limitations: Fish only, does not care about fishermen fishing activity or illegal activities
+- Search for related location technology that can see restricted areas
+- 
