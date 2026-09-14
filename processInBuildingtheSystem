@@ -58,4 +58,37 @@
 9.3. Train your YOLOv11 model using your dataset, then connect it to the "scan fish" button
 9.4. Build the online-only features: map, location, restricted area alerts
 
-Want me to break down step 9 (the actual feature-building part) into its own detailed numbered list too, the same way?
+10. Test everything thoroughly
+10.1. Test the AI scan feature with fish photos it hasn't seen before (not just your training photos) — check how often it gets the species right
+10.2. Test the app fully offline (turn on airplane mode) — confirm scanning, the fish library, and saved history all still work
+10.3. Test the online features — confirm GPS, restricted area alerts, and map all load correctly with internet
+10.4. Test what happens when you go from offline to online and back — make sure nothing breaks or gets lost
+10.5. Have each team member test on their own phone/browser, not just one person's setup
+10.6. Write down every bug you find in a simple list (or use GitHub's "Issues" tab to track them)
+
+11. Fix bugs and improve based on testing
+11.1. Go through your bug list from step 10.6 and fix them one by one
+11.2. If the AI often confuses two species, add more training photos for those two and retrain
+11.3. If the app feels slow or clunky, clean up the design/flow before moving on
+
+12. Test with real users (usability testing)
+12.1. Ask a few people outside your team (classmates, family, even actual fishers if possible) to try the app
+12.2. Watch them use it without helping — see where they get confused
+12.3. Ask them simple questions after: was it easy to scan a fish? did they understand the alerts? anything unclear?
+12.4. Note down their feedback and fix anything that came up repeatedly
+
+13. Write your documentation
+13.1. Write a short technical document: what tools you used, how the system works, how to install/run it
+13.2. Write a simple user guide: how a fisher would actually use the app, step by step
+13.3. Take screenshots of the app for your documentation and final presentation
+
+14. Prepare your final presentation
+14.1. Update your slides with what was actually built (vs. what was originally planned)
+14.2. Include screenshots or a short screen recording of the app working, both offline and online
+14.3. Prepare to explain your AI results — how accurate is it, on how many species
+14.4. Practice explaining the offline/online split clearly, since that's your project's core selling point
+
+15. Final submission
+15.1. Make sure your GitHub repo is clean and organized (remove test files, add a README)
+15.2. Confirm everything is pushed and up to date
+15.3. Submit according to whatever your school/instructor requires (repo link, documentation, presentation, etc.)
