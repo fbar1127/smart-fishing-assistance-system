@@ -1,0 +1,61 @@
+1. Set up GitHub (source code storage)
+1.1. Create a GitHub account (if you don't have one) at github.com
+1.2. Create a new repository, name it "isdayou"
+1.3. Set it to Private
+1.4. Add your teammates as collaborators (Settings → Collaborators → add by username or email)
+1.5. Clone the repo to your computer (git clone [link])
+
+2. Install your coding tools
+2.1. Download and install Git (git-scm.com) — lets your computer talk to GitHub
+2.2. Download and install Python 3.11+ (python.org) — for the backend and AI
+2.3. Download and install Node.js LTS (nodejs.org) — for the website/frontend
+2.4. Download and install Docker Desktop (docker.com) — runs your database without installing it directly
+2.5. Download and install VS Code (code.visualstudio.com) — the program you'll write code in
+2.6. In VS Code, install the "Python" extension and the "ESLint" extension (search in the Extensions tab)
+
+3. Find and prepare your fish dataset
+3.1. Decide how many fish species you want to start with (recommend 10)
+3.2. Search for existing labeled fish image datasets (Kaggle.com, search "fish species Philippines" or "fish classification dataset")
+3.3. Check BFAR (Bureau of Fisheries and Aquatic Resources) website for any official fish species references or photos you can use
+3.4. If you can't find enough images online, plan to take your own photos of each species (ask local markets/fisherfolk for permission)
+3.5. Organize the images into folders, one folder per species (e.g., /tilapia/, /bangus/, /galunggong/)
+3.6. Make a simple spreadsheet (CSV) listing each species: common name, scientific name, local name, whether it's restricted/has size limits
+
+4. Set up your AI tool (YOLOv11)
+4.1. Create a free account on Ultralytics (ultralytics.com) if their tools require it, or just install their Python package — no account needed to use it locally
+4.2. Install it by typing in your terminal: pip install ultralytics
+4.3. Follow their quickstart guide to confirm it works using their sample dataset first (before using your own fish photos)
+4.4. Once confirmed working, replace the sample data with your organized fish photo folders from step 3
+
+5. Set up your database
+5.1. In your project folder, create a file called docker-compose.yml
+5.2. In it, set up a PostgreSQL database with the PostGIS extension (this handles location/map data later)
+5.3. Run docker compose up -d in your terminal to start the database
+5.4. Confirm it's running by connecting with a tool like DBeaver (free, download at dbeaver.io)
+
+6. Set up the backend (the "brain" that runs behind the app)
+6.1. Inside your repo, create a folder called backend
+6.2. Open a terminal in that folder, run python -m venv venv to create a Python workspace
+6.3. Activate it, then run pip install fastapi uvicorn sqlalchemy psycopg2-binary
+6.4. Create a file main.py with a simple "Hello World" API
+6.5. Run uvicorn main:app --reload and check it works by opening localhost:8000 in your browser
+
+7. Set up the frontend (the part users see and tap)
+7.1. Inside your repo, create a folder called frontend
+7.2. Open a terminal in that folder, run npm create vite@latest . -- --template react
+7.3. Run npm install, then npm run dev to confirm the starter page loads
+7.4. This is where your login screen, camera button, and fish library page will eventually go
+
+8. Save your progress
+8.1. In the main repo folder, run git add .
+8.2. Run git commit -m "Initial project setup"
+8.3. Run git push
+8.4. Confirm your teammates can see the update on GitHub
+
+9. Start building features (once steps 1-8 are done)
+9.1. Build login/register screens
+9.2. Build the offline fish library (list of fish + info, works without internet)
+9.3. Train your YOLOv11 model using your dataset, then connect it to the "scan fish" button
+9.4. Build the online-only features: map, location, restricted area alerts
+
+Want me to break down step 9 (the actual feature-building part) into its own detailed numbered list too, the same way?
