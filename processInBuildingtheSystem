@@ -1,6 +1,13 @@
 # IsdaYou — Updated Build Checklist
 
-**What changed and why:** the manuscript specifies Android 9.0+ as the minimum OS (Section 2.4) and an architecture where identification, the species library, catch logging, and geofencing all run **on-device with no network connection** (Section 12). That's a native Android app, not a responsive website. The original checklist's step 7 built a React website — replaced below with native Android setup. A web frontend only exists for the **admin console** used by fisheries personnel (kept, but separated out and marked "web, admin only").
+The app functions in a hybrid offline/online mode:
+
+- Offline (No Internet): Users can scan fish using the local YOLO model (TFLite) bundled inside the app, 
+  view cached species details (FishSpecies), and save records locally (FishImage, FishIdentification).
+
+- Online (With Internet): The app stream GPS updates (Location) to run geofence boundary checks (RestrictedArea.containsLocation()), 
+  triggers seasonal breeding alerts (Notification), syncs pending logs, and executes automated web scrapers (GovernmentDataSource) 
+  on the backend to pull live updates from Philippine fisheries portals (e.g., BFAR seasonal closed seasons in the Visayan Sea and Zamboanga Peninsula).
 
 ---
 
@@ -9,119 +16,116 @@
 1.2. Create a new repository, name it "isdayou"
 1.3. Set it to Private
 1.4. Add your teammates as collaborators (Settings → Collaborators → add by username or email)
-1.5. Clone the repo to your computer (`git clone [link]`)
-1.6. Set up three top-level folders in the repo: `mobile-app/` (the Android app), `backend/` (API + sync + admin), `ml/` (training scripts, datasets, exported models)
+1.5. Clone the repo locally (git clone [link])
+1.6. Create three top-level folders: mobile-app/ (Android Studio project), backend/ (FastAPI + Web Scraper + PostGIS DB), and ml/ (YOLO training scripts & datasets)
 
 ## 2. Install your coding tools
 
-**For the mobile app (Android — this is the core deliverable):**
-2.1. Download and install **Android Studio** (developer.android.com/studio) — the IDE for building the Android app; it bundles the Android SDK and an emulator
-2.2. Install a **JDK** if Android Studio doesn't bundle one automatically (Android Studio now ships its own, usually no separate install needed)
-2.3. In Android Studio, install an emulator image matching your minimum target (Android 9.0 / API 28) and, if possible, also test on a real budget Android phone — the emulator doesn't tell you much about real camera/GPS/performance behavior
+For the mobile app (Android Client):
+2.1. Download and install Android Studio (bundles Android SDK and emulator)
+2.2. Install/verify JDK configuration inside Android Studio
+2.3. Set up an emulator matching API 28 (Android 9.0+) and prepare physical budget Android devices for real-world camera and GPS testing
 
-**For the backend, sync API, and ML training:**
-2.4. Download and install **Git** (git-scm.com)
-2.5. Download and install **Python 3.11+** (python.org) — backend API and model training
-2.6. Download and install **Node.js LTS** (nodejs.org) — only needed for the web-based admin console, not the mobile app
-2.7. Download and install **Docker Desktop** (docker.com) — runs your database without installing it directly
-2.8. Download and install **VS Code** (code.visualstudio.com) — for backend/Python/admin-console code (Android app code itself is written in Android Studio, not VS Code)
-2.9. In VS Code, install the "Python" extension and the "ESLint" extension
+For the backend, web scrapers, and ML pipeline:
+2.4. Download and install Git
+2.5. Download and install Python 3.12 (used for FastAPI backend, scrapers, and Ultralytics training)
+2.6. Download and install Node.js LTS (for the web-based admin console)
+2.7. Download and install Docker Desktop (to run PostgreSQL with PostGIS extension)
+2.8. Download and install VS Code with Python and ESLint extensions
 
-## 3. Find and prepare your fish dataset
-3.1. Decide how many fish species you want to start with (recommend 10–16; the manuscript's indicative list prioritizes species under closed seasons, size limits, or protection)
-3.2. Search for existing labeled fish image datasets (Kaggle, Roboflow Universe — search "fish species Philippines" or "fish classification dataset")
-3.3. Check the BFAR website for official species references or photos you can use
-3.4. If you can't find enough images online, take your own photos at markets or landing sites (ask permission from vendors/fisherfolk; don't include identifiable faces in the shots)
-3.5. Organize images into folders, one per species (e.g., `/tilapia/`, `/bangus/`, `/galunggong/`)
-3.6. Make a CSV listing each species: common name, scientific name, local name, whether it's restricted, size limit, closed season if any — this feeds both model class labels and the offline species-library content
+## 3. Find and prepare your Philippine fish dataset
+3.1. Identify target local species (e.g., Bangus, Galunggong, Tilapia, Mackerel, Sardines) prioritizing species with size limits or seasonal fishing bans
+3.2. Source labeled Philippine fish images from Roboflow Universe, Kaggle, BFAR references, or local market photos (avoid capturing identifiable faces)
+3.3. Organize images into structured directories by species name
+3.4. Create a master CSV/JSON mapping for FishSpecies attributes: 
+commonName, scientificName, localNames, description, habitat, averageSize, conservationStatus, minimumSize, and default fishingRestrictions
 
-## 4. Set up your AI tool (YOLOv11) — including mobile export
-4.1. Install the Ultralytics package: `pip install ultralytics` — no account needed to run it locally
-4.2. Follow their quickstart guide to confirm it works using their sample dataset first
-4.3. Once confirmed, replace the sample data with your organized fish photo folders from step 3
-4.4. Train, then **export the trained model to TFLite** (`model.export(format="tflite")`), since a `.pt` PyTorch file cannot run inside an Android app
-4.5. Apply INT8 post-training quantization on export to shrink the model and speed up inference on entry-level phones — then re-check accuracy on your test set, since quantized accuracy is not guaranteed to match the full-precision model
-4.6. Keep a versioned class-index file (species name ↔ class number) alongside every exported model — a mismatched index silently produces confident wrong species names
+## 4. Train and export the AI engine (YOLOv11)
+4.1. Install Ultralytics in Python: pip install ultralytics
+4.2. Train the YOLOv11 object detection model on your organized Philippine fish dataset
+4.3. Export the trained .pt weights to TensorFlow Lite (.tflite) for on-device execution: model.export(format="tflite")
+4.4. Apply INT8 quantization to ensure fast inference and low memory footprint on budget phones
+4.5. Generate and save a matching labels.txt class-index file alongside the TFLite model
 
-## 5. Set up your database
-5.1. In `backend/`, create a `docker-compose.yml`
-5.2. Set up **PostgreSQL with the PostGIS extension** — this is the authoritative backend database for species/regulation/geofence records; it is not what runs on the phone
-5.3. Run `docker compose up -d` to start it
-5.4. Confirm it's running by connecting with DBeaver (dbeaver.io)
+## 5. Set up the backend database (PostgreSQL + PostGIS)
+5.1. In backend/, configure a docker-compose.yml deploying PostgreSQL + PostGIS extension
+5.2. Run docker compose up -d to spin up spatial database instances
+5.3. Define database schemas mirroring your class diagram entities: User, FishImage, FishIdentification, FishSpecies, RestrictedArea, Location, Notification, and GovernmentDataSource
+5.4. Verify connection using DBeaver
 
-## 6. Set up the backend (sync API + admin data)
-6.1. In `backend/`, run `python -m venv venv` to create a Python workspace
-6.2. Activate it, then `pip install fastapi uvicorn sqlalchemy psycopg2-binary`
-6.3. Create `main.py` with a simple "Hello World" API
-6.4. Run `uvicorn main:app --reload`, check `localhost:8000`
-6.5. This backend's job is narrow: serve species/regulation/geofence data to the app on sync, and receive queued catch/identification logs when the phone reconnects. It is **not** where fish identification happens — that runs on the device.
+## 6. Build the backend & government web scraper (GovernmentDataSource)
+6.1. In backend/, initialize virtual environment: python -m venv venv
+6.2. Install packages: pip install fastapi uvicorn sqlalchemy psycopg2-binary beautifulsoup4 requests celery
+6.3. Build Python web scrapers (GovernmentDataSource) targeting Philippine fisheries sites (BFAR, DA advisories) to automatically fetch seasonal breeding prohibitions, 
+     date ranges (startDate, endDate), and restriction updates
+6.4. Schedule automated background jobs (using APScheduler or Celery) running GovernmentDataSource.getUpdates() to auto-update RestrictedArea entries in PostGIS
+6.5. Expose sync endpoints (/api/v1/sync/species, /api/v1/sync/geofences, /api/v1/notifications)
 
-## 7. Set up the mobile app (Android — where users actually scan fish)
-7.1. In Android Studio, create a new project inside `mobile-app/`: **Empty Activity**, language **Kotlin**, minimum SDK **API 28 (Android 9.0)**
-7.2. Add these dependencies in `build.gradle`:
-   - **CameraX** — camera capture for scanning fish
-   - **TensorFlow Lite Android** (`org.tensorflow:tensorflow-lite`) — runs the exported YOLO model on-device
-   - **Room** — local SQLite database wrapper for the offline species library, catch logs, and identification history
-   - **Retrofit + OkHttp** — talks to the FastAPI backend only when online (sync)
-   - **Play Services Location** (Fused Location Provider) — GPS coordinates
-   - **Play Services Location — Geofencing API** — restricted-zone entry/proximity detection
-   - **WorkManager** — schedules background sync and queued-log uploads for whenever connectivity returns
-   - **Jetpack Compose** (or XML layouts, either is fine) — UI
-7.3. Copy the exported `.tflite` model and class-index file from step 4 into `mobile-app/app/src/main/assets/`
-7.4. Build a minimal screen that opens the camera, captures a photo, and confirms the model loads and runs — before wiring up the rest of the UI
-7.5. Run it on the emulator, then on a real low-spec Android phone if you have one — camera and GPS behavior on an emulator is not representative
+## 7. Build the mobile app (Android — Kotlin)
+7.1. In Android Studio, initialize project in mobile-app/ (Empty Activity, Kotlin, API 28+)
+7.2. Add dependencies in build.gradle:
+   - CameraX (capturing/selecting FishImage)
+   - TensorFlow Lite Android (org.tensorflow:tensorflow-lite)
+   - Room DB (local offline cache for FishSpecies, FishIdentification, and queued logs)
+   - Retrofit + OkHttp (online backend synchronization & alerts)
+   - Play Services Location (Fused Location Provider) (reading device Location)
+   - WorkManager (background log sync upon internet reconnection)
+   - Jetpack Compose (UI implementation)
+7.3. Place exported .tflite model and labels.txt inside app/src/main/assets/
+7.4. Build CameraX integration to allow scanning or selecting an image from device gallery
+7.5. Implement local model execution pipeline: image capture -> pre-processing -> TFLite inference -> display primarySpecies, confidence, and alternatives
 
-## 8. Set up the admin console (web, admin only — not what fishers use)
-8.1. In `backend/`, or a separate `admin-console/` folder, run `npm create vite@latest . -- --template react`
-8.2. Run `npm install`, then `npm run dev` to confirm the starter page loads
-8.3. This is where fisheries personnel manage species records, geofence boundaries, and regulation entries (FR-019 to FR-023) — it's a browser page for administrators, never installed on a fisher's phone
+## 8. Build the admin console (Web, admin only)
+8.1. In backend/ or admin-console/, create Vite React project: npm create vite@latest . -- --template react
+8.2. Build admin interface for fisheries personnel to manually add or adjust RestrictedArea geofences, seasonal breeding dates, 
+     and regulatory mandates (FR-019 to FR-023)
 
 ## 9. Save your progress
-9.1. `git add .`
-9.2. `git commit -m "Initial project setup"`
-9.3. `git push`
+9.1. git add .
+9.2. git commit -m "Complete hybrid offline/online core architecture setup"
+9.3. git push
 9.4. Confirm your teammates can see the update on GitHub
 
-## 10. Start building features (once steps 1–9 are done)
-10.1. Build the Android login/register screens (Kotlin + your backend's auth endpoints)
-10.2. Build the offline fish library — a Room-backed list of species + info, bundled or synced once, readable with zero connectivity
-10.3. Wire the "scan fish" button to CameraX capture → preprocessing → the on-device TFLite model → result screen with bounding box, confidence score, and ranked alternatives
-10.4. Build the online-only features: map (restricted zones), GPS-based geofencing alerts, sync
-10.5. Build the admin console screens for species/geofence/regulation management (React, backend-connected)
+## 10. Implement core features
 
-## 11. Test everything thoroughly
-11.1. Test the AI scan feature with fish photos it hasn't seen before, not just training photos — check accuracy per species, not just overall
-11.2. Test the Android app fully offline (airplane mode) — confirm scanning, the fish library, and saved history all still work with zero network
-11.3. Test the online-only features — confirm GPS, restricted-area alerts, and map load correctly with internet
-11.4. Test going from offline → online → offline again — confirm queued logs sync and nothing is lost or duplicated
-11.5. Have each team member test on their own physical Android phone, not just the emulator — camera quality, GPU/CPU, and RAM vary a lot on budget devices
-11.6. Track every bug in GitHub's "Issues" tab
+Offline Features (No Internet Required):
+10.1. Local Fish Identification: Run TFLite YOLO model on device $\rightarrow$ output primary match, confidence level, and alternative species possibilities
+10.2. Offline Species Info: Query local Room DB (FishSpecies) to show scientific name, common name, local names, size limits, and cached rules
+10.3. Local Identification Storage: Save offline scans locally into Room database
 
-## 12. Fix bugs and improve based on testing
-12.1. Work through the bug list from step 11.6
-12.2. If the model confuses two species, add more training photos for those two and retrain (steps 3–4)
-12.3. If the app feels slow or clunky on a low-end device, profile it in Android Studio before assuming it's the model's fault — inference time, UI rendering, and I/O are separate bottlenecks
+Online Features (Internet Connection Detected):
+10.4. GPS Geofencing & Seasonal Alerts: Stream Location coordinates to backend/local engine -> run RestrictedArea.containsLocation() 
+      and check if current date falls between startDate and endDate -> trigger Notification if user enters prohibited breeding/restricted zones
+10.5. Data Synchronization: WorkManager uploads saved offline FishImage and FishIdentification logs to PostgreSQL server and 
+      pulls updated FishSpecies & RestrictedArea rules scraped by GovernmentDataSource
 
-## 13. Test with real users (usability testing)
-13.1. Ask people outside your team — classmates, family, ideally actual fishers — to try the app on a real phone
-13.2. Watch them use it without helping; note where they get confused
-13.3. Ask afterward: was scanning easy? did they understand the alerts? anything unclear?
-13.4. Fix anything that comes up repeatedly
+## 11. Testing & Validation
+11.1. AI Accuracy: Test scanning with unseen fish photos; verify confidence metrics and alternative rankings
+11.2. Offline Integrity: Turn on Airplane Mode -> verify full camera scanning, TFLite inference, and local dataset lookup function smoothly
+11.3. Geofencing & Alerts: Turn on Internet + Location -> test simulated coordinates inside a restricted breeding zone -> verify popup warning/notification triggers correctly
+11.4. Web Scraper Test: Trigger GovernmentDataSource.getUpdates() script -> verify BFAR website updates correctly populate RestrictedArea table
+11.5. Sync Queue: Run scans offline -> re-enable Wi-Fi/Mobile Data -> verify WorkManager syncs records without duplicate entries
+11.6. Track all bugs in GitHub Issues tab
+
+## 12. Refinement & Optimization
+12.1. Retrain model with additional image samples if confusion occurs between similar species
+12.2. Profile mobile CPU/GPU memory usage during TFLite inference using Android Studio Profiler
+
+## 13. Usability Testing
+13.1. Conduct field testing with non-technical users and fisherfolk
+13.2. Evaluate ease of camera capture, clarity of confidence ratings, and visibility of geofence warnings
+13.3. Adjust UI/UX based on direct feedback
 
 ## 14. Write your documentation
-14.1. Technical document: tools used, system architecture, how to build and run both the Android app and the backend
-14.2. User guide: how a fisher would actually use the app, step by step, in plain language
-14.3. Screenshots of the Android app (not the admin console) for the user-facing parts of your documentation
+14.1. Write System Architecture Document detailing the offline TFLite engine, PostGIS geofencing, and BFAR scraper mechanisms
+14.2. Prepare User Guide outlining scanning, reading size limits, and interpreting geofence warnings
 
-## 15. Prepare your final presentation
-15.1. Update slides with what was actually built vs. originally planned
-15.2. Include screenshots or a short screen recording of the Android app working, both offline and online
-15.3. Prepare to explain AI results — accuracy, on how many species, and where it struggles
-15.4. Practice explaining the offline/online split clearly — that's the project's core selling point, and it only makes sense once people understand this is a native app, not a website
+## 15. Presentation & Final Submission
+15.1. Prepare presentation deck highlighting offline identification vs. online geofencing capabilities
+15.2. Prepare live demonstration or recorded video showing offline scanning followed by real-time geofence alerting
+15.3. Clean GitHub repository and submit final project deliverables (APK, source code, and documentation)
 
 ## 16. Final submission
 16.1. Make sure your GitHub repo is clean and organized (remove test files, add a README)
 16.2. Confirm everything is pushed and up to date
 16.3. Submit according to what your instructor requires (repo link, documentation, presentation, APK if requested, etc.)
-
-https://cdn.phototourl.com/free/2026-09-14-009a0820-0aa8-4e4e-a1bc-ede6cfa84339.png
