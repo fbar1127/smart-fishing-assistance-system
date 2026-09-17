@@ -28,7 +28,7 @@ For the mobile app (Android Client):
 
 For the backend, web scrapers, and ML pipeline:
 2.4. Download and install Git
-2.5. Download and install Python 3.12 (used for FastAPI backend, scrapers, and Ultralytics training)
+2.5. Download and install Python 3.12.10 (used for FastAPI backend, scrapers, and Ultralytics training) - dapat kana jud nga version hap ty
 2.6. Download and install Node.js LTS (for the web-based admin console)
 2.7. Download and install Docker Desktop (to run PostgreSQL with PostGIS extension)
 2.8. Download and install VS Code with Python and ESLint extensions
