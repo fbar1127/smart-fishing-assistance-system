@@ -1,3 +1,5 @@
+If you want complete feature lists, go to manuscript in scope section.
+
 Features:
 - Fish Species Identification via Computer-Vision
 - Offline Species Library
@@ -6,14 +8,13 @@ Features:
 - Notifications regarding violations, distance, and new zone restrictions.
 
 Scope:
-These are the features that the system will accomplish:
 AI-based identification of selected fish species: The system can identify a species of a fish if it exists inside its dataset.
-Offline fish species library:
-GPS-based location monitoring:
-Map of selected government-provided restricted areas:
-Geofencing and location-based warnings:
-Notifications about selected fishing regulations and closed seasons:
-User-friendly interface for municipal fishers:
+Offline fish species library.
+GPS-based location monitoring.
+Map of selected government-provided restricted areas.
+Geofencing and location-based warnings.
+Notifications about selected fishing regulations and closed seasons.
+User-friendly interface for municipal fishers.
 
 Manuscript:
 https://docs.google.com/document/d/1zTsYY7cbZiO8PZIeFErMFnuDyWwLyGFy1B7VS_1jmE0/edit?pli=1&tab=t.0
