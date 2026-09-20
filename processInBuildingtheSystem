@@ -55,7 +55,7 @@ For the mobile app (Android Client):
 
 For the backend, web scrapers, and ML pipeline:
 2.4. Install Git
-2.5. Install Python 3.11.16 — not the newest release. Ultralytics and TFLite export tooling regularly lag behind the latest Python version; 3.10/3.11 is the safer, 
+2.5. Install Python 3.11.9 — not the newest release. Ultralytics and TFLite export tooling regularly lag behind the latest Python version; 3.10/3.11 is the safer, 
      better-tested choice for training and export. (The backend/scraper code isn't picky and can share the same environment.)
 2.6. Install Node.js LTS — for the web-based admin console only
 2.7. Install Docker Desktop — for PostgreSQL + PostGIS
