@@ -1,221 +1,252 @@
+======================================================================================================================================================
 IsdaYou — Build Checklist (Manuscript-Aligned)
-
 This replaces the previous checklist. Every step below is cross-referenced to the
 manuscript requirement it implements, so if a requirement changes later, you know
 exactly which build step to revisit.
 
 What changed from the last version, and why:
-Training and deployment now cover two models, not one — matching Section 7.3
-and MLR-004/005/015/016: YOLO detects and crops the fish; a separate CNN
-classifies the species from the cropped region.
+The pipeline is now single-stage, not two-stage — matching Section 9.3, Section 3.2
+(Out of Scope: "Multiple Fish Detection and Counting"), Section 3.4, and MLR-001
+through MLR-016. There is no YOLO detection/cropping stage. The manuscript states
+the team deliberately chose CNN-only single-label classification over a
+detection-based pipeline, because the app's use case assumes one user-framed fish
+per photo — adding detection was judged unnecessary overhead for the target
+hardware and offline constraints. This is a correction, not a simplification: the
+previous "two-model" version contradicted the manuscript outright.
 
-Geofencing now runs offline, against locally cached boundary data — matching
-the fixed Section 5.3. Only refreshing that data (via the BFAR scraper) needs
-internet; checking a user's location against it does not.
-Added Android's dedicated Geofencing API, required for FR-016's background
-detection — Fused Location Provider alone can't do this.
+Geofencing still runs offline, against locally cached boundary data — matching
+Section 5.3. Only refreshing that data (via the BFAR scraper) needs internet;
+checking a user's location against it does not. This part was already correct and
+is unchanged.
 
-Terminology corrected to match the manuscript: "closed season" / "restricted
-area", not "breeding alerts" / "breeding zone" (those terms appear nowhere in
-the manuscript and would confuse a reviewer comparing the two documents).
-Python pinned to a safer version range for the ML tooling.
+Android's dedicated Geofencing API is still required for FR-016's background
+detection — Fused Location Provider alone can't do this. Also unchanged.
 
+Terminology matches the manuscript: "restricted area" (the general term used
+throughout Section 3.1, covering MPAs and other regulated zones) and "closed
+season," not "breeding alerts" / "breeding zone."
+
+Python pinned to a safer version range for the ML tooling — now justified by
+TensorFlow/Keras and TFLite export tooling compatibility, not Ultralytics (which
+is no longer part of the stack, since there's no YOLO model to train).
+=======================================================================================================================================================
 Hybrid Offline/Online Mode — the source of truth for every step below
 Offline (no internet) — matches Section 5.3, "Offline Continuity with Periodic Synchronization":
-- Fish identification: YOLO (detection) → CNN (classification), both run on-device via TFLite
-- Species library lookup: cached `FishSpecies` data in Room
-- Restricted-area / closed-season checks: `RestrictedArea.containsLocation()` evaluated against locally cached boundary and date-range data in Room — this is the fix from before
+- Fish identification: single CNN classifies the full submitted image on-device via TFLite (no detection/crop stage)
+- Species library lookup: cached `FishSpecies` data in Room/SQLite
+- Restricted-area / closed-season checks: `RestrictedArea.containsLocation()` evaluated against locally cached boundary and date-range data in Room
 - Catch and identification logging: saved locally in Room, queued for sync
 
-Online (internet available) — matches Section 5.3's sync clause and BR10/FR-024:
-- `GovernmentDataSource` scraper refreshes `RestrictedArea` boundaries, closed-season date ranges, and species data from BFAR sources
-- `WorkManager` uploads queued `FishImage` / `FishIdentification` logs
+Online (internet available) — matches Section 5.3's sync clause, BR10, and FR-024:
+- `GovernmentDataSource` scraper refreshes `RestrictedArea` boundaries, closed-season date ranges, and species data from BFAR sources (web scraping where no formal API exists)
+- `WorkManager` uploads queued `FishImage` / `FishIdentification` logs, subject to user consent (MLR-016)
 - Notifications about newly changed rules can push once refreshed data lands, but the check itself never depends on connectivity
-- Keep this distinction in mind through every step — it's the one design point most likely to quietly drift if a step gets written without checking it.
 
+Keep this distinction in mind through every step — it's the one design point most likely to quietly drift if a step gets written without checking it.
+=======================================================================================================================================================
 
 ## 1. Set up GitHub (source code storage)
+
 1.1. Create a GitHub account if you don't have one
 1.2. Create a private repository named `isdayou`
 1.3. Add your teammates as collaborators (Settings → Collaborators)
 1.4. Clone the repo locally
 1.5. Create three top-level folders:
-      `mobile-app/` — Android Studio project
-      `backend/` — FastAPI + scraper + PostGIS
-      `ml/` — YOLO and CNN training scripts, datasets, exported models
-      ---
+     `mobile-app/` — Android Studio project
+     `backend/` — FastAPI + scraper + PostGIS
+     `ml/` — CNN training scripts, datasets, exported model
 
+---
 
 ## 2. Install your coding tools
 
 For the mobile app (Android Client):
 2.1. Install Android Studio (bundles Android SDK + emulator)
 2.2. Verify JDK is configured (Android Studio ships its own; usually nothing extra to install)
-2.3. Set up an emulator at API 28 (Android 9.0), and get at least one real budget Android phone ready for camera/GPS testing — the emulator can't tell you much about either
+2.3. Set up an emulator at API 28 (Android 9.0, the manuscript's minimum supported OS — Section 2.4), and get at least one real budget Android phone ready for camera/GPS testing — 
+     the emulator can't tell you much about either
 
 For the backend, web scrapers, and ML pipeline:
 2.4. Install Git
-2.5. Install Python 3.11.9 — not the newest release. Ultralytics and TFLite export tooling regularly lag behind the latest Python version; 3.10/3.11 is the safer, 
+2.5. Install Python 3.11.9 — not the newest release. TensorFlow and TFLite export tooling regularly lag behind the latest Python version; 3.10/3.11 is the safer, 
      better-tested choice for training and export. (The backend/scraper code isn't picky and can share the same environment.)
 2.6. Install Node.js LTS — for the web-based admin console only
 2.7. Install Docker Desktop — for PostgreSQL + PostGIS
 2.8. Install VS Code with the Python and ESLint extensions
+
 ---
 
 ## 3. Find and prepare your Philippine fish dataset
-      This step now needs to produce two related but distinct datasets — one for each model.
 
-3.1. Identify target species — prioritize ones with a closed season, size limit, or protected status 
-     (matches Section 6.2's species list: Tamban, Alumahan, Hasa-hasa, Galunggong, Danggit, Lapu-lapu, etc., 
-     plus common aquaculture species like Bangus and Tilapia if you want easier wins)
-3.2. Source images from Roboflow Universe, Kaggle (see the Cabuyao fish-port dataset we already flagged), 
-     BFAR references, or your own market photography — no identifiable faces in your own photos
-3.3. Build Dataset A — for YOLO (detection): full, uncropped images with a bounding box drawn around each fish. This is what teaches YOLO where the fish is.
-3.4. Build Dataset B — for the CNN (classification): once YOLO can detect and crop reliably, run it over your images to produce cropped, 
-     per-species-labeled fish-only images. This is what teaches the CNN what species it is. 
-     (Early on, before YOLO is trained, you can bootstrap Dataset B with manually cropped images so CNN training can start in parallel.)
-3.5. Organize both datasets into folders by species name, kept clearly separate (`/ml/dataset-yolo/` vs `/ml/dataset-cnn/`)
-3.6. Build the master CSV/JSON for 
-     `FishSpecies` attributes: `commonName`, `scientificName`, `localNames`, `description`, `habitat`, `averageSize`, `conservationStatus`, `minimumSize`, `defaultFishingRestrictions`
-     ---
+One dataset this time — there's no separate detection dataset to build.
 
+3.1. Identify target species — prioritize ones with a closed season, size limit, or protected status (matches Section 6.2's species list: Tamban, Alumahan, Hasa-hasa, 
+     Galunggong, Danggit, Lapu-lapu, etc., plus common aquaculture species like Bangus and Tilapia if you want easier wins)
+3.2. Source images from Kaggle (the manuscript's Section 3.2 names Kaggle specifically as the dataset source and scopes the model to whatever species it contains), 
+     supplemented by BFAR references or your own market photography if needed — no identifiable faces in your own photos
+3.3. Build a single labeled dataset: full, uncropped images with a species label per image — no bounding-box annotation needed, since there's no detection stage 
+     (Section 7.3: the whole image is resized and normalized directly as CNN input)
+3.4. Capture images the way an end-user would: fish clearly visible and reasonably centered as the primary subject (Section 3.3's assumption — 
+     the system does not perform automatic fish detection or isolation, so training data should reflect the same framing users are expected to provide)
+3.5. Organize the dataset into folders by species name (`/ml/dataset/`)
+3.6. Build the master CSV/JSON for `FishSpecies` attributes: `commonName`, `scientificName`, `localNames`, `description`, `habitat`, `averageSize`, `conservationStatus`, 
+     `minimumSize`, `defaultFishingRestrictions`
 
-## 4. Train and export the two-stage AI pipeline
-4.1 — Train YOLO (detection stage)
-      Install: `pip install ultralytics`
-      Train YOLOv11 on Dataset A to detect and localize fish 
-      (species label at this stage can be coarse or even generic "fish" 
-      — YOLO's job here is finding the fish, not naming it)
-      Export: `model.export(format="tflite")`
-      Apply INT8 quantization for speed and size on budget phones
-      Save the exported file as `yolo_detector.tflite`
+---
 
-4.2 — Train the CNN (classification stage)
-      Choose a lightweight architecture suited to mobile: MobileNetV3 or EfficientNet-Lite are good starting points — they're built for exactly this kind of on-device constraint
-      Train on Dataset B (cropped, species-labeled images) to classify species from an already-localized fish
-      Export to TFLite the same way, with INT8 quantization
-      Save as `species_classifier.tflite`
+## 4. Train and export the CNN classifier
 
-4.3 — Generate one shared class-index file
-      `labels.txt` maps the CNN's output indices to species names — this is the file MLR-015 refers to when it says predictions must be traceable to a specific trained artifact. 
-      Version this file alongside both models; a mismatch here is a silent, dangerous bug (confident predictions with wrong names).
+4.1. Choose architecture: Pick a lightweight architecture suited to mobile: MobileNetV3 or EfficientNet-Lite are good starting points 
+     — they're built for exactly this kind of on-device constraint (matches the model comparison table in Section 10.2)
+4.2. Train: Train on the labeled dataset from Step 3 to classify species directly from the full image (no cropping — Section 7.3). 
+     Evaluate with Accuracy, Precision, Recall, F1-score, and Top-3 Accuracy (Section 10.1.1) 
+     - Top-3 matters because the app shows ranked alternative candidates (MLR-007). 
+     Also check the recall-per-species target: at least 80% recall for every species with a closed season, size limit, or protected status (Section 5.2), not just overall accuracy.
+4.3. Export: Export to TFLite (`model.export(format="tflite")`). Apply INT8 quantization for speed and size on budget phones. Save the exported file as `species_classifier.tflite`.
+4.4. Generate the class-index file: `labels.txt` maps the CNN's output indices to species names — this is what MLR-014 refers to when it says predictions 
+     must be traceable to the specific trained artifact. Version this file alongside the model; a mismatch here is a silent, dangerous bug (confident predictions with wrong names).
+4.5. Sanity-check before touching Android: Run a test script on your machine: image in → resize/normalize → CNN classifies → prints species, confidence, and top-3 alternatives. 
+     Confirm this works end-to-end in Python before wiring it into Kotlin.
 
-4.4 — Sanity-check the full pipeline before touching Android
-      Run a test script on your machine: image in → YOLO detects & crops → CNN classifies → prints result. 
-      Confirm this works end-to-end in Python before you spend time wiring it into Kotlin. 
-      Debugging two models is much easier outside the app than inside it.
+---
 
 ## 5. Set up the backend database (PostgreSQL + PostGIS)
+
 5.1. In `backend/`, configure `docker-compose.yml` with PostgreSQL + PostGIS
 5.2. `docker compose up -d`
 5.3. Define schemas matching your class diagram: `User`, `FishImage`, `FishIdentification`, `FishSpecies`, `RestrictedArea`, `Location`, `Notification`, `GovernmentDataSource`
 5.4. Verify the connection with DBeaver
+
 ---
 
 ## 6. Build the backend and the government data scraper
+
 6.1. In `backend/`: `python -m venv venv`
 6.2. `pip install fastapi uvicorn sqlalchemy psycopg2-binary beautifulsoup4 requests celery`
-6.3. Build the scraper (`GovernmentDataSource`) targeting BFAR/DA advisory pages to pull closed-season date ranges (`startDate`, `endDate`) 
-     and restricted-area updates — use the manuscript's actual terminology here, not "breeding," so your code, docs, and manuscript all describe the same thing
-6.4. Schedule it with APScheduler or Celery, running `GovernmentDataSource.getUpdates()` to refresh `RestrictedArea` records in PostGIS 
-     — this is the online-only half of the system; nothing about running the check itself should live here
+6.3. Build the scraper (`GovernmentDataSource`) targeting BFAR/DA advisory pages to pull closed-season date ranges (`startDate`, `endDate`) and 
+     restricted-area updates — matches FR-024's "automated data ingestion pipeline, including web scraping where no formal data feed is available"
+6.4. Schedule it with APScheduler or Celery, running `GovernmentDataSource.getUpdates()` to refresh `RestrictedArea` records in PostGIS — this is the online-only half of the system; 
+     nothing about running the check itself should live here
 6.5. Expose sync endpoints: `/api/v1/sync/species`, `/api/v1/sync/geofences`, `/api/v1/notifications`
-     ---
+
+---
 
 ## 7. Build the mobile app (Android — Kotlin)
-  7.1. In Android Studio: new project in `mobile-app/`, Kotlin, minimum SDK API 28
-  7.2. Add dependencies in `build.gradle`:
-      CameraX — capturing/selecting a `FishImage`
-      TensorFlow Lite Android — runs both `yolo_detector.tflite` and `species_classifier.tflite`
-      Room — offline cache for `FishSpecies`, `FishIdentification`, `RestrictedArea` boundaries and closed-season dates, and queued logs
-      Retrofit + OkHttp — sync calls to the backend when online
-      Play Services Location (Fused Location Provider) — current device coordinates
-      Play Services Geofencing API (`GeofencingClient`) — this is the piece the last version was missing. 
-        - Location alone only tells you where you are; the Geofencing API is what lets the OS notify your app when a boundary is entered or approached, 
-        - including while the app isn't in the foreground, which is what FR-016 actually requires.
-      WorkManager — background sync when connectivity returns
-      Jetpack Compose — UI
-  7.3. Place both `.tflite` files and `labels.txt` in `app/src/main/assets/`
-  7.4. Build CameraX capture/gallery-select flow
-  7.5. Implement the full local pipeline, matching MLR-001 through MLR-011:
-  ```
-   Capture image (MLR-001)
-     → Validate format/resolution (MLR-002)
-     → Preprocess: resize, letterbox, normalize (MLR-003)
-     → YOLO detects & localizes fish (MLR-004, MLR-005 — bounding box)
-     → Crop detected region
-     → CNN classifies species (MLR-005 — class + confidence)
-     → Non-max suppression on overlapping detections (MLR-006)
-     → Threshold filter (MLR-007) → below threshold: "no confident ID" (MLR-009)
-     → Display species, confidence, bounding box overlay (MLR-011), ranked alternatives (MLR-008)
-     → Log prediction with both model versions (MLR-013, MLR-015)
-   ```
-  7.6. Implement `RestrictedArea.containsLocation()` to run locally, against Room's cached boundary and closed-season data, 
-     using coordinates from the Fused Location Provider and boundary entry/exit events from the Geofencing API — this must work with the phone in airplane mode
-  ---
+
+7.1. In Android Studio: new project in `mobile-app/`, Kotlin, minimum SDK API 28
+7.2. Add dependencies in `build.gradle`:
+     - CameraX — capturing/selecting a `FishImage`
+     - TensorFlow Lite Android — runs `species_classifier.tflite`
+     - Room — offline cache for `FishSpecies`, `FishIdentification`, `RestrictedArea` boundaries and closed-season dates, and queued logs
+     - Retrofit + OkHttp — sync calls to the backend when online
+     - Play Services Location (Fused Location Provider) — current device coordinates
+     - Play Services Geofencing API (`GeofencingClient`) — location alone only tells you where you are; 
+       the Geofencing API is what lets the OS notify your app when a boundary is entered or approached, including while the app isn't in the foreground, which is what FR-016 actually requires
+     - WorkManager — background sync when connectivity returns
+     - Jetpack Compose — UI
+7.3. Place `species_classifier.tflite` and `labels.txt` in `app/src/main/assets/`
+7.4. Build CameraX capture/gallery-select flow
+7.5. Implement the full local pipeline, matching MLR-001 through MLR-016:
+      Capture or select image (MLR-001)
+      → Validate resolution/format, reject invalid input (MLR-002)
+      → Preprocess: resize to CNN input dimensions, normalize pixel values (MLR-003)
+      → CNN classifies the full image directly — no crop step (MLR-004)
+      → Return species class + confidence score (MLR-005)
+      → Threshold filter: only show results meeting the primary confidence threshold (MLR-006)
+      → Below threshold: "no confident identification" (MLR-008), not a species name
+      → Show up to 3 ranked alternative candidates above the secondary threshold (MLR-007)
+      → Display result with an "assistive, not certified taxonomic determination" advisory (MLR-009)
+      → Display the submitted image next to the result so the user can visually confirm it (MLR-010)
+      → Let the user reject the result and manually pick the correct species from the library (MLR-011)
+      → Log timestamp, predicted class, confidence, and any user correction (MLR-012)
+      → Link the confirmed identification to its species profile — protection status shown regardless of location — and to any applicable zone/season advisory (MLR-013)
+      → Record the active model's version identifier with the prediction (MLR-014)
+7.6. Implement `RestrictedArea.containsLocation()` to run locally, against Room's cached boundary and closed-season data, using coordinates from 
+     the Fused Location Provider and boundary entry/exit events from the Geofencing API — this must work with the phone in airplane mode
+7.7. Design the model layer so `species_classifier.tflite` can be swapped for a retrained version without touching other modules (MLR-015) 
+     — keep the TFLite file, `labels.txt`, and the code that loads them decoupled from the rest of the app
+---
 
 ## 8. Build the admin console (web, admin only)
+
 8.1. `npm create vite@latest . -- --template react` in `backend/` or a separate `admin-console/`
 8.2. Build CRUD screens for `RestrictedArea` geofences, closed-season dates, species records, and regulatory entries (FR-019 to FR-023)
 
-## 9. Save your progress
-9.1. `git add .`
-9.2. `git commit -m "Two-stage YOLO+CNN pipeline and offline geofencing"`
-9.3. `git push`
-9.4. Confirm teammates see the update
 ---
 
+## 9. Save your progress
+
+9.1. `git add .`
+9.2. `git commit -m "Single-stage CNN classification pipeline, aligned to manuscript"`
+9.3. `git push`
+9.4. Confirm teammates see the update
+
+---
 
 ## 10. Implement and verify the core features
 
+Offline (matches Section 5.3's offline-continuity clause):
+10.1. Local identification: CNN classifies the full image on-device → species, confidence, alternatives
+10.2. Offline species library: query cached `FishSpecies` in Room
+10.3. Offline restricted-area check: `RestrictedArea.containsLocation()` against cached boundaries and closed-season date ranges, triggering a local `Notification` with no network call
+10.4. Local logging: `FishImage` and `FishIdentification` saved to Room immediately
 
-Offline Features (No Internet Required):
-  Offline (matches Section 5.3's offline-continuity clause):
-    10.1. Local identification: YOLO → crop → CNN → species, confidence, alternatives, all on-device
-    10.2. Offline species library: query cached `FishSpecies` in Room
-    10.3. Offline restricted-area check: `RestrictedArea.containsLocation()` against cached boundaries and closed-season date ranges, triggering a local `Notification` with no network call
-    10.4. Local logging: `FishImage` and `FishIdentification` saved to Room immediately
-  Online (matches the sync clause of 5.3 and BR10/FR-024):
-    10.5. `GovernmentDataSource` scraper refreshes `RestrictedArea`, closed-season dates, and `FishSpecies` data
-    10.6. `WorkManager` uploads queued logs and pulls the refreshed reference data
-    ---
+Online (matches the sync clause of 5.3 and BR10/FR-024):
+10.5. `GovernmentDataSource` scraper refreshes `RestrictedArea`, closed-season dates, and `FishSpecies` data
+10.6. `WorkManager` uploads queued logs (with user consent, per MLR-016) and pulls the refreshed reference data
 
+---
 
 ## 11. Testing and validation
-11.1. AI accuracy — test with unseen fish photos; check both detection quality (does YOLO find the fish?) and classification quality (does the CNN name it correctly?) separately — a failure in one stage looks different from a failure in the other, and you'll want to know which one to retrain
-11.2. Offline integrity — airplane mode: confirm camera capture, full two-stage inference, species library, and restricted-area/closed-season checks all still work with zero connectivity. This last one is the check that would have caught the earlier contradiction.
+
+11.1. AI accuracy — test with unseen fish photos; check overall accuracy, precision, recall, F1, and Top-3 accuracy per Section 10.1.1, 
+      plus the per-species recall floor for closed-season/protected species (Section 5.2). Also check whether higher-confidence predictions are actually more often correct (Section 10.1.2) — 
+      - a confidence score that doesn't track real reliability is a UX problem, not just a metrics one
+11.2. Offline integrity — airplane mode: confirm camera capture, classification, species library, and restricted-area/closed-season checks all still work with zero connectivity
 11.3. Geofencing correctness — with cached boundary data already on the device, simulate coordinates inside a restricted area, in airplane mode, and confirm the alert still fires
 11.4. Scraper test — trigger `GovernmentDataSource.getUpdates()` manually, confirm BFAR data populates `RestrictedArea` correctly
-11.5. Sync queue — scan offline, reconnect, confirm `WorkManager` uploads without duplicating records
-11.6. Track every bug in GitHub Issues
+11.5. Sync queue — scan offline, reconnect, confirm `WorkManager` uploads without duplicating records, and only after consent is given
+11.6. Framing sensitivity — since there's no detection/cropping stage, deliberately test off-center, partially obstructed, and cluttered-background 
+      photos to see how much accuracy degrades (Section 3.4 flags this as an expected limitation, not a bug)
+11.7. Track every bug in GitHub Issues
+
 ---
 
 ## 12. Refinement
-12.1. If YOLO and CNN confuse the same pair of species repeatedly, check which stage is actually failing before adding more data blindly — more detection data won't fix a classification confusion, and vice versa
-12.2. Profile combined CPU/memory usage of running two models back-to-back on a budget device using Android Studio Profiler — this is a heavier ask than a single model, so measure it early rather than assuming it'll fit
+
+12.1. If the model confuses the same pair of species repeatedly, check for genuinely similar visual features (Section 17.2 flags this as an expected risk) before assuming it's a data problem 
+      — look at the confusion matrix first
+12.2. Profile the single model's CPU/memory usage on a budget device using Android Studio Profiler
+
 ---
 
-
 ## 13. Usability testing
+
 13.1. Field test with non-technical users and, ideally, actual fishers
 13.2. Evaluate camera capture ease, clarity of confidence display, and visibility of restricted-area warnings
 13.3. Adjust UI/UX based on direct feedback
----
 
+---
 
 ## 14. Documentation
-14.1. System Architecture doc: describe the two-stage YOLO+CNN pipeline, the offline-first PostGIS-backed geofencing design, and the BFAR scraper mechanism — matching Sections 7.3, 12, and 5.3
+
+14.1. System Architecture doc: describe the single-stage CNN classification pipeline, the offline-first PostGIS-backed geofencing design, and the BFAR scraper mechanism — 
+      matching Sections 9.3, 12, and 5.3
 14.2. User Guide: scanning, reading size limits, interpreting restricted-area and closed-season warnings
+
 ---
 
-
 ## 15. Presentation and final submission
-15.1. Presentation deck: highlight the two-stage AI pipeline and the offline-first design specifically — both are now consistent between your manuscript and your build, which is worth stating plainly
+
+15.1. Presentation deck: highlight the CNN classification approach and the offline-first design — both are now consistent between your manuscript and your build, 
+      which is worth stating plainly (and worth noting why detection was deliberately left out, per Section 9.3, rather than framing it as a limitation you ran out of time for)
 15.2. Live demo or recorded video: offline scanning (airplane mode) followed by a restricted-area alert firing without reconnecting, then reconnecting to show the sync
 15.3. Clean the GitHub repo
 
+---
 
 ## 16. Final submission
+
 16.1. Repo clean and organized, with a README
 16.2. Everything pushed and current
 16.3. Submit per your instructor's requirements (repo link, documentation, presentation, APK, etc.)
