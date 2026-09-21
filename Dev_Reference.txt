@@ -1,11 +1,14 @@
 If you want complete feature lists, go to manuscript in scope section.
 
 Features:
-- Fish Species Identification via Computer-Vision
-- Offline Species Library
-- Map w/ Restricted Areas from government data source
-- User Activity Log
-- Notifications regarding violations, distance, and new zone restrictions.
+- Fish Species Identification via YOLO for preprocessing and CNN for actual identification.
+- Identification result would include calculated confidence scores, alternative candidates, and fish conservation status.
+- Offline Species Reference Library
+- Map w/ Restricted zones scraped from government data source
+- Digital Catch Logging
+- Notifications regarding regulations, distance from restricted zones, and new zone restrictions.
+- View Visual Data Summary
+- Mobile App
 
 Scope:
 AI-based identification of selected fish species: The system can identify a species of a fish if it exists inside its dataset.
