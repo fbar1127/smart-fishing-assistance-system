@@ -1,7 +1,7 @@
 If you want complete feature lists, go to manuscript in scope section.
 
 Features:
-- Fish Species Identification via YOLO for preprocessing and CNN for actual identification.
+- Fish Species Identification via CNN for actual identification.
 - Identification result would include calculated confidence scores, alternative candidates, and fish conservation status.
 - Offline Species Reference Library
 - Map w/ Restricted zones scraped from government data source
